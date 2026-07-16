@@ -3,27 +3,27 @@
    Palette: ນ້ຳ (water) blue-teal, ພື້ນຫຼັງອ່ອນ, ໂຕໜັງສືອ່ານງ່າຍ ສຳລັບໃຊ້ຢູ່ໜ້າວຽກ
    ========================================================================== */
 :root {
-  --color-bg: #F4F8FA;
+  --color-bg: #F7F3FC;
   --color-surface: #FFFFFF;
-  --color-primary: #0B5FA8;
-  --color-primary-dark: #084A87;
-  --color-primary-light: #E7F1FB;
-  --color-accent: #12A5B0;
+  --color-primary: #7B3FA0;
+  --color-primary-dark: #5B2C82;
+  --color-primary-light: #F1E6FA;
+  --color-accent: #C15FBF;
   --color-success: #2F9E64;
   --color-success-bg: #E7F6EE;
-  --color-danger: #D64545;
-  --color-danger-bg: #FBEAEA;
-  --color-warning: #C98A11;
+  --color-danger: #D64571;
+  --color-danger-bg: #FCE9F1;
+  --color-warning: #C9821A;
   --color-warning-bg: #FCF2DE;
-  --color-text: #16232E;
-  --color-text-muted: #667485;
-  --color-border: #E1E8ED;
+  --color-text: #241B3A;
+  --color-text-muted: #7A6D93;
+  --color-border: #E7DCF3;
 
   --radius-sm: 8px;
   --radius-md: 14px;
   --radius-lg: 20px;
-  --shadow-card: 0 2px 10px rgba(11, 95, 168, 0.08);
-  --shadow-modal: 0 12px 40px rgba(16, 40, 60, 0.25);
+  --shadow-card: 0 2px 10px rgba(123, 63, 160, 0.10);
+  --shadow-modal: 0 12px 40px rgba(74, 30, 110, 0.28);
 
   --font-body: 'Noto Sans Lao', 'Noto Sans', -apple-system, BlinkMacSystemFont, sans-serif;
 }
@@ -72,8 +72,8 @@ a { color: var(--color-primary); }
   align-items: center;
   justify-content: center;
   background:
-    radial-gradient(circle at 15% 20%, rgba(18,165,176,0.18), transparent 45%),
-    radial-gradient(circle at 85% 85%, rgba(11,95,168,0.18), transparent 45%),
+    radial-gradient(circle at 15% 20%, rgba(193,95,191,0.20), transparent 45%),
+    radial-gradient(circle at 85% 85%, rgba(123,63,160,0.20), transparent 45%),
     var(--color-bg);
   padding: 24px;
 }
@@ -158,8 +158,8 @@ a { color: var(--color-primary); }
 .btn:active { transform: scale(0.98); }
 .btn:disabled { opacity: .55; cursor: not-allowed; }
 
-.btn-primary { background: var(--color-primary); color: #fff; }
-.btn-primary:hover:not(:disabled) { background: var(--color-primary-dark); }
+.btn-primary { background: linear-gradient(135deg, var(--color-primary), var(--color-accent)); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: linear-gradient(135deg, var(--color-primary-dark), var(--color-primary)); }
 .btn-accent { background: var(--color-accent); color: #fff; }
 .btn-success { background: var(--color-success); color: #fff; }
 .btn-danger { background: var(--color-danger); color: #fff; }
@@ -192,7 +192,7 @@ a { color: var(--color-primary); }
 .sidebar {
   width: 232px;
   flex-shrink: 0;
-  background: var(--color-primary-dark);
+  background: linear-gradient(165deg, var(--color-primary-dark), #3D1F5E);
   color: #fff;
   display: flex;
   flex-direction: column;
@@ -231,7 +231,7 @@ a { color: var(--color-primary); }
   text-align: left;
 }
 .nav-item:hover { background: rgba(255,255,255,0.08); color: #fff; }
-.nav-item.active { background: var(--color-accent); color: #fff; }
+.nav-item.active { background: linear-gradient(135deg, var(--color-accent), #E091D6); color: #fff; }
 
 .sidebar-footer {
   margin-top: auto;
