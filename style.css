@@ -440,6 +440,7 @@ tbody tr:hover { background: #FAFCFD; }
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   margin-bottom: 12px;
 }
 .stock-item-name { font-weight: 700; font-size: 14.5px; }
