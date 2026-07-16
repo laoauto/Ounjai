@@ -80,6 +80,27 @@ function productThumbHtml(imageUrl, size) {
   `;
 }
 
+// ສ້າງ HTML ລາຍການສິນຄ້າແບບກົດເລືອກໄດ້ (ມີຮູບ) — ໃຊ້ແທນ <select> ໃນໜ້າ Admin ທີ່ຢາກໂຊຮູບສິນຄ້າ
+function buildProductPickerHtml(products, stockMap, selectedId, btnClass) {
+  return `
+    <div class="${btnClass}-list" style="max-height:280px;overflow-y:auto;padding-right:2px;">
+      ${products.map((p) => {
+        const s = stockMap[p.product_id];
+        const qty = s ? s.quantity : 0;
+        return `
+          <button type="button" class="product-pick-btn ${btnClass} ${p.product_id === selectedId ? 'selected' : ''}" data-id="${p.product_id}">
+            <span style="display:flex;align-items:center;gap:10px;">
+              ${productThumbHtml(p.image_url, 36)}
+              ${escapeHtml(p.product_name)}
+            </span>
+            <span class="stock-hint">ຄົງເຫຼືອ ${formatNumber(qty)}</span>
+          </button>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
 /* ============================== Bootstrapping ============================== */
 
 function init() {
@@ -511,6 +532,8 @@ async function renderAdminSellRetail(main) {
   await drawFactoryRetailForm(main.querySelector('#sell-retail-content'), main);
 }
 
+let sellAgentPickState = { selectedProduct: null };
+
 async function drawSellToAgentForm(subContent, main) {
   try {
     const [agents, products, stock, prices] = await Promise.all([
@@ -522,64 +545,68 @@ async function drawSellToAgentForm(subContent, main) {
     prices.forEach((p) => { priceMap[p.product_id] = p; });
     const activeAgents = agents.filter((a) => a.status === 'active');
 
-    subContent.innerHTML = `
-      <div class="card" style="max-width:520px;">
-        <form id="sell-form">
-          <div class="field">
-            <label>ເລືອກຕົວແທນ</label>
-            <select id="sell-agent" required>
-              ${activeAgents.length === 0 ? '<option value="">— ບໍ່ມີຕົວແທນທີ່ active —</option>' :
-                activeAgents.map((a) => `<option value="${a.user_id}">${escapeHtml(a.agent_name)} (${escapeHtml(a.username)})</option>`).join('')}
-            </select>
-          </div>
-          <div class="field">
-            <label>ເລືອກສິນຄ້າ</label>
-            <select id="sell-product" required>
-              ${products.map((p) => {
-                const s = stockMap[p.product_id];
-                return `<option value="${p.product_id}">${escapeHtml(p.product_name)} (ຄົງເຫຼືອ ${s ? formatNumber(s.quantity) : 0})</option>`;
-              }).join('')}
-            </select>
-          </div>
-          <div id="sell-price-hint" style="font-size:12.5px;margin-bottom:12px;"></div>
-          <div class="field">
-            <label>ຈຳນວນ</label>
-            <input type="number" id="sell-qty" min="1" required>
-          </div>
-          <button class="btn btn-primary btn-block" type="submit" ${activeAgents.length === 0 ? 'disabled' : ''}>ຢືນຢັນການໂອນສະຕັອກ</button>
-        </form>
-      </div>
-    `;
+    if (!sellAgentPickState.selectedProduct && products.length > 0) sellAgentPickState.selectedProduct = products[0].product_id;
 
-    const priceHintEl = subContent.querySelector('#sell-price-hint');
-    const updatePriceHint = () => {
-      const pid = subContent.querySelector('#sell-product').value;
-      const price = priceMap[pid];
-      const wholesale = price ? Number(price.wholesale_price) : 0;
-      if (!wholesale) {
-        priceHintEl.innerHTML = `<span style="color:var(--color-danger);font-weight:600;">⚠️ ສິນຄ້ານີ້ຍັງບໍ່ໄດ້ຕັ້ງລາຄາຂາຍສົ່ງ (ຈະຄິດເປັນ 0 ກີບ) — ໄປຕັ້ງລາຄາກ່ອນທີ່ໜ້າ "ຕັ້ງລາຄາ"</span>`;
-      } else {
-        priceHintEl.innerHTML = `<span style="color:var(--color-text-muted);">ລາຄາຂາຍສົ່ງ: <strong>${formatMoney(wholesale)}</strong> / ແພັກ</span>`;
-      }
-    };
-    subContent.querySelector('#sell-product').addEventListener('change', updatePriceHint);
-    updatePriceHint();
-
-    subContent.querySelector('#sell-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const agent_id = document.getElementById('sell-agent').value;
-      const product_id = document.getElementById('sell-product').value;
-      const qty = document.getElementById('sell-qty').value;
-      try {
-        const res = await apiCall('sell_to_agent', { agent_id, product_id, qty });
-        showToast(`ໂອນສະຕັອກສຳເລັດ, ຍອດລວມ ${formatMoney(res.total_amount)}`, 'success');
-        renderAdminSellAgent(main);
-      } catch (err) { showToast(err.message, 'error'); }
-    });
+    drawSellAgentUI(subContent, agents, products, stockMap, priceMap, activeAgents, main);
   } catch (err) {
     subContent.innerHTML = renderErrorCard(err.message);
   }
 }
+
+function drawSellAgentUI(subContent, agents, products, stockMap, priceMap, activeAgents, main) {
+  const selectedId = sellAgentPickState.selectedProduct;
+  const price = priceMap[selectedId];
+  const wholesale = price ? Number(price.wholesale_price) : 0;
+
+  subContent.innerHTML = `
+    <div class="card" style="max-width:560px;">
+      <form id="sell-form">
+        <div class="field">
+          <label>ເລືອກຕົວແທນ</label>
+          <select id="sell-agent" required>
+            ${activeAgents.length === 0 ? '<option value="">— ບໍ່ມີຕົວແທນທີ່ active —</option>' :
+              activeAgents.map((a) => `<option value="${a.user_id}">${escapeHtml(a.agent_name)} (${escapeHtml(a.username)})</option>`).join('')}
+          </select>
+        </div>
+        <div class="field">
+          <label>ເລືອກສິນຄ້າ</label>
+          ${buildProductPickerHtml(products, stockMap, selectedId, 'sell-agent-pick-btn')}
+        </div>
+        <div id="sell-price-hint" style="font-size:12.5px;margin-bottom:12px;">
+          ${!wholesale
+            ? `<span style="color:var(--color-danger);font-weight:600;">⚠️ ສິນຄ້ານີ້ຍັງບໍ່ໄດ້ຕັ້ງລາຄາຂາຍສົ່ງ (ຈະຄິດເປັນ 0 ກີບ) — ໄປຕັ້ງລາຄາກ່ອນທີ່ໜ້າ "ຕັ້ງລາຄາ"</span>`
+            : `<span style="color:var(--color-text-muted);">ລາຄາຂາຍສົ່ງ: <strong>${formatMoney(wholesale)}</strong> / ແພັກ</span>`}
+        </div>
+        <div class="field">
+          <label>ຈຳນວນ</label>
+          <input type="number" id="sell-qty" min="1" required>
+        </div>
+        <button class="btn btn-primary btn-block" type="submit" ${activeAgents.length === 0 ? 'disabled' : ''}>ຢືນຢັນການໂອນສະຕັອກ</button>
+      </form>
+    </div>
+  `;
+
+  subContent.querySelectorAll('.sell-agent-pick-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      sellAgentPickState.selectedProduct = btn.dataset.id;
+      drawSellAgentUI(subContent, agents, products, stockMap, priceMap, activeAgents, main);
+    });
+  });
+
+  subContent.querySelector('#sell-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const agent_id = document.getElementById('sell-agent').value;
+    const product_id = sellAgentPickState.selectedProduct;
+    const qty = document.getElementById('sell-qty').value;
+    try {
+      const res = await apiCall('sell_to_agent', { agent_id, product_id, qty });
+      showToast(`ໂອນສະຕັອກສຳເລັດ, ຍອດລວມ ${formatMoney(res.total_amount)}`, 'success');
+      renderAdminSellAgent(main);
+    } catch (err) { showToast(err.message, 'error'); }
+  });
+}
+
+let sellRetailPickState = { selectedProduct: null, qty: 1 };
 
 async function drawFactoryRetailForm(subContent, main) {
   try {
@@ -591,71 +618,74 @@ async function drawFactoryRetailForm(subContent, main) {
     const priceMap = {};
     prices.forEach((p) => { priceMap[p.product_id] = p; });
 
-    subContent.innerHTML = `
-      <div class="card" style="max-width:520px;margin-bottom:14px;background:var(--color-primary-light);">
-        <div style="font-size:12.5px;color:var(--color-primary-dark);">
-          💡 ໃຊ້ສຳລັບກໍລະນີມີລູກຄ້າທົ່ວໄປມາຊື້ໜ້າໂຮງງານໂດຍກົງ — ຈະຕັດສະຕັອກໂຮງງານທັນທີ ແລະ ຄິດເປັນລາຄາຂາຍປີກ
-        </div>
-      </div>
-      <div class="card" style="max-width:520px;">
-        <form id="retail-sell-form">
-          <div class="field">
-            <label>ເລືອກສິນຄ້າ</label>
-            <select id="retail-product" required>
-              ${products.map((p) => {
-                const s = stockMap[p.product_id];
-                return `<option value="${p.product_id}">${escapeHtml(p.product_name)} (ຄົງເຫຼືອ ${s ? formatNumber(s.quantity) : 0})</option>`;
-              }).join('')}
-            </select>
-          </div>
-          <div id="retail-price-hint" style="font-size:12.5px;margin-bottom:12px;"></div>
-          <div class="field">
-            <label>ຈຳນວນ</label>
-            <input type="number" id="retail-qty" min="1" value="1" required>
-          </div>
-          <div class="total-preview" style="margin-bottom:14px;">
-            <div class="label">ຍອດລວມທີ່ຕ້ອງເກັບ</div>
-            <div class="value" id="retail-total-preview">0 ₭</div>
-          </div>
-          <button class="btn btn-success btn-block" type="submit">✅ ຢືນຢັນການຂາຍປີກ</button>
-        </form>
-      </div>
-    `;
+    if (!sellRetailPickState.selectedProduct && products.length > 0) sellRetailPickState.selectedProduct = products[0].product_id;
 
-    const priceHintEl = subContent.querySelector('#retail-price-hint');
-    const totalPreviewEl = subContent.querySelector('#retail-total-preview');
-    const productSelect = subContent.querySelector('#retail-product');
-    const qtyInput = subContent.querySelector('#retail-qty');
-
-    const updatePreview = () => {
-      const pid = productSelect.value;
-      const price = priceMap[pid];
-      const retail = price ? Number(price.retail_price) : 0;
-      const qty = Number(qtyInput.value) || 0;
-      if (!retail) {
-        priceHintEl.innerHTML = `<span style="color:var(--color-danger);font-weight:600;">⚠️ ສິນຄ້ານີ້ຍັງບໍ່ໄດ້ຕັ້ງລາຄາຂາຍປີກ — ໄປຕັ້ງລາຄາກ່ອນທີ່ໜ້າ "ຕັ້ງລາຄາ"</span>`;
-      } else {
-        priceHintEl.innerHTML = `<span style="color:var(--color-text-muted);">ລາຄາຂາຍປີກ: <strong>${formatMoney(retail)}</strong> / ແພັກ</span>`;
-      }
-      totalPreviewEl.textContent = formatMoney(retail * qty);
-    };
-    productSelect.addEventListener('change', updatePreview);
-    qtyInput.addEventListener('input', updatePreview);
-    updatePreview();
-
-    subContent.querySelector('#retail-sell-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const product_id = productSelect.value;
-      const qty = qtyInput.value;
-      try {
-        const res = await apiCall('factory_retail_sale', { product_id, qty });
-        showToast(`ຂາຍປີກສຳເລັດ, ຍອດລວມ ${formatMoney(res.total_amount)}`, 'success');
-        renderAdminSellRetail(main);
-      } catch (err) { showToast(err.message, 'error'); }
-    });
+    drawSellRetailUI(subContent, products, stockMap, priceMap, main);
   } catch (err) {
     subContent.innerHTML = renderErrorCard(err.message);
   }
+}
+
+function drawSellRetailUI(subContent, products, stockMap, priceMap, main) {
+  const selectedId = sellRetailPickState.selectedProduct;
+  const price = priceMap[selectedId];
+  const retail = price ? Number(price.retail_price) : 0;
+  const qty = sellRetailPickState.qty || 1;
+
+  subContent.innerHTML = `
+    <div class="card" style="max-width:560px;margin-bottom:14px;background:var(--color-primary-light);">
+      <div style="font-size:12.5px;color:var(--color-primary-dark);">
+        💡 ໃຊ້ສຳລັບກໍລະນີມີລູກຄ້າທົ່ວໄປມາຊື້ໜ້າໂຮງງານໂດຍກົງ — ຈະຕັດສະຕັອກໂຮງງານທັນທີ ແລະ ຄິດເປັນລາຄາຂາຍປີກ
+      </div>
+    </div>
+    <div class="card" style="max-width:560px;">
+      <form id="retail-sell-form">
+        <div class="field">
+          <label>ເລືອກສິນຄ້າ</label>
+          ${buildProductPickerHtml(products, stockMap, selectedId, 'retail-pick-btn')}
+        </div>
+        <div id="retail-price-hint" style="font-size:12.5px;margin-bottom:12px;">
+          ${!retail
+            ? `<span style="color:var(--color-danger);font-weight:600;">⚠️ ສິນຄ້ານີ້ຍັງບໍ່ໄດ້ຕັ້ງລາຄາຂາຍປີກ — ໄປຕັ້ງລາຄາກ່ອນທີ່ໜ້າ "ຕັ້ງລາຄາ"</span>`
+            : `<span style="color:var(--color-text-muted);">ລາຄາຂາຍປີກ: <strong>${formatMoney(retail)}</strong> / ແພັກ</span>`}
+        </div>
+        <div class="field">
+          <label>ຈຳນວນ</label>
+          <input type="number" id="retail-qty" min="1" value="${qty}" required>
+        </div>
+        <div class="total-preview" style="margin-bottom:14px;">
+          <div class="label">ຍອດລວມທີ່ຕ້ອງເກັບ</div>
+          <div class="value" id="retail-total-preview">${formatMoney(retail * qty)}</div>
+        </div>
+        <button class="btn btn-success btn-block" type="submit">✅ ຢືນຢັນການຂາຍປີກ</button>
+      </form>
+    </div>
+  `;
+
+  subContent.querySelectorAll('.retail-pick-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      sellRetailPickState.selectedProduct = btn.dataset.id;
+      drawSellRetailUI(subContent, products, stockMap, priceMap, main);
+    });
+  });
+
+  const qtyInput = subContent.querySelector('#retail-qty');
+  qtyInput.addEventListener('input', () => {
+    sellRetailPickState.qty = Number(qtyInput.value) || 0;
+    subContent.querySelector('#retail-total-preview').textContent = formatMoney(retail * sellRetailPickState.qty);
+  });
+
+  subContent.querySelector('#retail-sell-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const product_id = sellRetailPickState.selectedProduct;
+    const qty = qtyInput.value;
+    try {
+      const res = await apiCall('factory_retail_sale', { product_id, qty });
+      showToast(`ຂາຍປີກສຳເລັດ, ຍອດລວມ ${formatMoney(res.total_amount)}`, 'success');
+      sellRetailPickState.qty = 1;
+      renderAdminSellRetail(main);
+    } catch (err) { showToast(err.message, 'error'); }
+  });
 }
 
 async function renderAdminPurchaseRequests(main) {
@@ -1121,10 +1151,11 @@ async function renderAdminPrices(main) {
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>ສິນຄ້າ</th><th>ລາຄາສົ່ງ</th><th>ລາຄາປີກ</th><th>ອັບເດດລ່າສຸດ</th><th>ຈັດການ</th></tr></thead>
+          <thead><tr><th>ຮູບ</th><th>ສິນຄ້າ</th><th>ລາຄາສົ່ງ</th><th>ລາຄາປີກ</th><th>ອັບເດດລ່າສຸດ</th><th>ຈັດການ</th></tr></thead>
           <tbody id="prices-tbody">
             ${prices.map((p) => `
               <tr data-id="${p.product_id}">
+                <td>${productThumbHtml(p.image_url, 40)}</td>
                 <td>${escapeHtml(p.product_name)}</td>
                 <td><input type="number" class="price-wholesale-input" data-id="${p.product_id}" value="${Number(p.wholesale_price)}" style="width:110px;padding:6px 8px;border:1px solid var(--color-border);border-radius:6px;"></td>
                 <td><input type="number" class="price-retail-input" data-id="${p.product_id}" value="${Number(p.retail_price)}" style="width:110px;padding:6px 8px;border:1px solid var(--color-border);border-radius:6px;"></td>
