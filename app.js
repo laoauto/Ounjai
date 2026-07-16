@@ -49,6 +49,37 @@ function whatsappButtonHtml(rawPhone, label) {
   return `<a class="wa-btn" href="${link}" target="_blank" rel="noopener">💬 ${escapeHtml(label || 'WhatsApp')}</a>`;
 }
 
+// ແປງລິ້ງ Google Drive (ຮູບແບບ Share Link ທຳມະດາ) ໃຫ້ເປັນລິ້ງສະແດງຮູບໂດຍກົງ
+// ຮອງຮັບ: https://drive.google.com/file/d/FILE_ID/view?usp=sharing ແລະ https://drive.google.com/open?id=FILE_ID
+// ໝາຍເຫດ: ໄຟລ໌ໃນ Drive ຕ້ອງຕັ້ງເປັນ "Anyone with the link can view" ຈຶ່ງຈະສະແດງຮູບໄດ້
+function driveImageLink(rawUrl) {
+  if (!rawUrl) return null;
+  const trimmed = String(rawUrl).trim();
+  if (!trimmed) return null;
+
+  let match = trimmed.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  if (match) return `https://drive.google.com/thumbnail?id=${match[1]}&sz=w1000`;
+
+  match = trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (match) return `https://drive.google.com/thumbnail?id=${match[1]}&sz=w1000`;
+
+  // ບໍ່ແມ່ນລິ້ງ Drive -> ຖືວ່າເປັນລິ້ງຮູບພາບທົ່ວໄປ ໃຊ້ຄືເກົ່າ
+  return trimmed;
+}
+
+// ສ້າງ HTML ຮູບຕົວຢ່າງສິນຄ້າ (ມີ Fallback ເປັນໄອຄອນນ້ຳຢອດ ຖ້າບໍ່ມີຮູບ ຫຼື ໂຫລດຮູບບໍ່ໄດ້)
+function productThumbHtml(imageUrl, size) {
+  size = size || 44;
+  const link = driveImageLink(imageUrl);
+  const fontSize = Math.round(size * 0.5);
+  return `
+    <div style="width:${size}px;height:${size}px;border-radius:10px;background:var(--color-primary-light);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;position:relative;">
+      <span style="font-size:${fontSize}px;">💧</span>
+      ${link ? `<img src="${link}" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;" onerror="this.remove()">` : ''}
+    </div>
+  `;
+}
+
 /* ============================== Bootstrapping ============================== */
 
 function init() {
@@ -296,6 +327,9 @@ function renderErrorCard(msg) {
 async function renderAdminStock(main) {
   try {
     const [stock, products] = await Promise.all([apiCall('get_factory_stock'), apiCall('get_products')]);
+    const productMap = {};
+    products.forEach((p) => { productMap[p.product_id] = p; });
+
     main.innerHTML = `
       <div class="page-header">
         <div>
@@ -323,33 +357,47 @@ async function renderAdminStock(main) {
 
       <div class="section-title">🆕 ສ້າງສິນຄ້າໃໝ່</div>
       <div class="card">
-        <form id="new-product-form" class="form-row">
-          <div class="field">
-            <label>ຊື່ສິນຄ້າ</label>
-            <input type="text" id="new-product-name" placeholder="ເຊັ່ນ ນ້ຳດື່ມຖັງ 20L" required>
+        <form id="new-product-form">
+          <div class="form-row">
+            <div class="field">
+              <label>ຊື່ສິນຄ້າ</label>
+              <input type="text" id="new-product-name" placeholder="ເຊັ່ນ ນ້ຳດື່ມຖັງ 20L" required>
+            </div>
+            <div class="field">
+              <label>ຫົວໜ່ວຍ</label>
+              <input type="text" id="new-product-unit" placeholder="ຖັງ / ແພັກ" required>
+            </div>
+            <div class="field">
+              <label>ຂັ້ນຕ່ຳແຈ້ງເຕືອນ</label>
+              <input type="number" id="new-product-min" min="0" value="10" required>
+            </div>
           </div>
-          <div class="field">
-            <label>ຫົວໜ່ວຍ</label>
-            <input type="text" id="new-product-unit" placeholder="ຖັງ / ແພັກ" required>
+          <div class="field" style="margin-top:12px;">
+            <label>ລິ້ງຮູບພາບ (Google Drive, ທາງເລືອກ)</label>
+            <input type="text" id="new-product-image" placeholder="ວາງລິ້ງ Share ຈາກ Google Drive ທີ່ນີ້">
           </div>
-          <div class="field">
-            <label>ຂັ້ນຕ່ຳແຈ້ງເຕືອນ</label>
-            <input type="number" id="new-product-min" min="0" value="10" required>
-          </div>
-          <button class="btn btn-accent" type="submit">ສ້າງສິນຄ້າ</button>
+          <button class="btn btn-accent" type="submit" style="margin-top:12px;">ສ້າງສິນຄ້າ</button>
         </form>
       </div>
 
       <div class="section-title">ສະຕັອກປັດຈຸບັນ</div>
-      ${renderTable(
-        ['ສິນຄ້າ', 'ຫົວໜ່ວຍ', 'ຄົງເຫຼືອ', 'ອັບເດດລ່າສຸດ'],
-        stock.map((s) => [
-          escapeHtml(s.product_name),
-          escapeHtml(s.unit),
-          s.low_stock ? `<span class="badge badge-danger">${formatNumber(s.quantity)}</span>` : formatNumber(s.quantity),
-          escapeHtml(s.last_updated)
-        ])
-      )}
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>ຮູບ</th><th>ສິນຄ້າ</th><th>ຫົວໜ່ວຍ</th><th>ຄົງເຫຼືອ</th><th>ອັບເດດລ່າສຸດ</th><th>ຈັດການ</th></tr></thead>
+          <tbody>
+            ${stock.map((s) => `
+              <tr>
+                <td>${productThumbHtml((productMap[s.product_id] || {}).image_url, 44)}</td>
+                <td>${escapeHtml(s.product_name)}</td>
+                <td>${escapeHtml(s.unit)}</td>
+                <td>${s.low_stock ? `<span class="badge badge-danger">${formatNumber(s.quantity)}</span>` : formatNumber(s.quantity)}</td>
+                <td>${escapeHtml(s.last_updated)}</td>
+                <td><button class="btn btn-sm btn-outline edit-product-btn" data-id="${s.product_id}">✏️ ແກ້ໄຂ/ຮູບ</button></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
     `;
 
     main.querySelector('#add-stock-form').addEventListener('submit', async (e) => {
@@ -368,16 +416,73 @@ async function renderAdminStock(main) {
       const name = document.getElementById('new-product-name').value.trim();
       const unit = document.getElementById('new-product-unit').value.trim();
       const min_stock_alert = document.getElementById('new-product-min').value;
+      const image_url = document.getElementById('new-product-image').value.trim();
       try {
-        await apiCall('create_product', { name, unit, min_stock_alert });
+        await apiCall('create_product', { name, unit, min_stock_alert, image_url });
         showToast('ສ້າງສິນຄ້າສຳເລັດ', 'success');
         renderAdminStock(main);
       } catch (err) { showToast(err.message, 'error'); }
     });
 
+    main.querySelectorAll('.edit-product-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const product = productMap[btn.dataset.id];
+        openEditProductModal(product, main);
+      });
+    });
+
   } catch (err) {
     main.innerHTML = renderErrorCard(err.message);
   }
+}
+
+function openEditProductModal(product, main) {
+  const overlay = el(`
+    <div class="modal-overlay">
+      <div class="modal-box">
+        <div class="modal-title">✏️ ແກ້ໄຂສິນຄ້າ: ${escapeHtml(product.product_name)}</div>
+        <div style="display:flex;justify-content:center;margin-bottom:14px;" id="edit-product-preview">
+          ${productThumbHtml(product.image_url, 90)}
+        </div>
+        <div class="field">
+          <label>ຊື່ສິນຄ້າ</label>
+          <input type="text" id="edit-product-name" value="${escapeHtml(product.product_name)}">
+        </div>
+        <div class="form-row" style="margin-top:10px;">
+          <div class="field"><label>ຫົວໜ່ວຍ</label><input type="text" id="edit-product-unit" value="${escapeHtml(product.unit || '')}"></div>
+          <div class="field"><label>ຂັ້ນຕ່ຳແຈ້ງເຕືອນ</label><input type="number" id="edit-product-min" min="0" value="${Number(product.min_stock_alert) || 0}"></div>
+        </div>
+        <div class="field" style="margin-top:10px;">
+          <label>ລິ້ງຮູບພາບ (Google Drive)</label>
+          <input type="text" id="edit-product-image" value="${escapeHtml(product.image_url || '')}" placeholder="ວາງລິ້ງ Share ຈາກ Google Drive">
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-outline" id="edit-product-cancel">ຍົກເລີກ</button>
+          <button class="btn btn-primary" id="edit-product-save">💾 ບັນທຶກ</button>
+        </div>
+      </div>
+    </div>
+  `);
+  document.body.appendChild(overlay);
+
+  overlay.querySelector('#edit-product-image').addEventListener('input', (e) => {
+    overlay.querySelector('#edit-product-preview').innerHTML = productThumbHtml(e.target.value, 90);
+  });
+
+  overlay.querySelector('#edit-product-cancel').addEventListener('click', () => overlay.remove());
+  overlay.querySelector('#edit-product-save').addEventListener('click', async () => {
+    const name = overlay.querySelector('#edit-product-name').value.trim();
+    const unit = overlay.querySelector('#edit-product-unit').value.trim();
+    const min_stock_alert = overlay.querySelector('#edit-product-min').value;
+    const image_url = overlay.querySelector('#edit-product-image').value.trim();
+    if (!name) { showToast('ກະລຸນາໃສ່ຊື່ສິນຄ້າ', 'error'); return; }
+    try {
+      await apiCall('update_product', { product_id: product.product_id, name, unit, min_stock_alert, image_url });
+      showToast('ບັນທຶກສຳເລັດ', 'success');
+      overlay.remove();
+      renderAdminStock(main);
+    } catch (err) { showToast(err.message, 'error'); }
+  });
 }
 
 async function renderAdminSellAgent(main) {
@@ -1242,7 +1347,8 @@ async function renderAgentDashboard(content) {
         ? '<div class="empty-state"><div class="icon">📦</div>ຍັງບໍ່ມີສະຕັອກ</div>'
         : data.stock_summary.map((s) => `
           <div class="stock-item-card">
-            <div>
+            ${productThumbHtml(s.image_url, 40)}
+            <div style="flex:1;">
               <div class="stock-item-name">${escapeHtml(s.product_name)}</div>
               <div class="stock-item-unit">${escapeHtml(s.unit)}</div>
             </div>
@@ -1290,7 +1396,8 @@ async function drawAgentStockList(subContent) {
       ? '<div class="empty-state"><div class="icon">📦</div>ຍັງບໍ່ມີສະຕັອກ, ລໍຖ້າໂຮງງານໂອນສິນຄ້າໃຫ້ທ່ານ</div>'
       : stock.map((s) => `
         <div class="stock-item-card">
-          <div>
+          ${productThumbHtml(s.image_url, 44)}
+          <div style="flex:1;">
             <div class="stock-item-name">${escapeHtml(s.product_name)}</div>
             <div class="stock-item-unit">${escapeHtml(s.unit)} • ອັບເດດ ${escapeHtml(s.last_updated)}</div>
           </div>
@@ -1498,7 +1605,10 @@ function drawQuickSale(content) {
         <div id="product-pick-list">
           ${stock.map((s) => `
             <button class="product-pick-btn ${s.product_id === agentState.selectedProduct ? 'selected' : ''}" data-id="${s.product_id}">
-              <span>${escapeHtml(s.product_name)}</span>
+              <span style="display:flex;align-items:center;gap:10px;">
+                ${productThumbHtml(s.image_url, 34)}
+                ${escapeHtml(s.product_name)}
+              </span>
               <span class="stock-hint">ຄົງເຫຼືອ ${formatNumber(s.quantity)}</span>
             </button>
           `).join('')}
