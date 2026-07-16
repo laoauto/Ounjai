@@ -144,7 +144,7 @@ function renderAdminApp(session) {
     <div class="admin-shell">
       <div class="sidebar">
         <div class="sidebar-brand">
-          <span class="sidebar-dot"></span> ນ້ຳດື່ມ ອຸ່ນໃຈ
+          <span class="sidebar-dot"></span> ລະບົບສະຕັອກ ນ້ຳດື່ມ ອຸ່ນໃຈ
         </div>
         <div id="admin-nav"></div>
         <div class="sidebar-footer">
