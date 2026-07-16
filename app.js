@@ -536,27 +536,29 @@ let sellAgentPickState = { selectedProduct: null };
 
 async function drawSellToAgentForm(subContent, main) {
   try {
-    const [agents, products, stock, prices] = await Promise.all([
-      apiCall('get_agents'), apiCall('get_products'), apiCall('get_factory_stock'), apiCall('get_prices')
+    const [agents, products, stock, prices, promotions] = await Promise.all([
+      apiCall('get_agents'), apiCall('get_products'), apiCall('get_factory_stock'), apiCall('get_prices'), apiCall('get_promotions')
     ]);
     const stockMap = {};
     stock.forEach((s) => { stockMap[s.product_id] = s; });
     const priceMap = {};
     prices.forEach((p) => { priceMap[p.product_id] = p; });
     const activeAgents = agents.filter((a) => a.status === 'active');
+    const runningPromos = promotions.filter((p) => p.status === 'running');
 
     if (!sellAgentPickState.selectedProduct && products.length > 0) sellAgentPickState.selectedProduct = products[0].product_id;
 
-    drawSellAgentUI(subContent, agents, products, stockMap, priceMap, activeAgents, main);
+    drawSellAgentUI(subContent, agents, products, stockMap, priceMap, activeAgents, runningPromos, main);
   } catch (err) {
     subContent.innerHTML = renderErrorCard(err.message);
   }
 }
 
-function drawSellAgentUI(subContent, agents, products, stockMap, priceMap, activeAgents, main) {
+function drawSellAgentUI(subContent, agents, products, stockMap, priceMap, activeAgents, runningPromos, main) {
   const selectedId = sellAgentPickState.selectedProduct;
   const price = priceMap[selectedId];
   const wholesale = price ? Number(price.wholesale_price) : 0;
+  const promo = runningPromos.find((p) => p.product_id === selectedId);
 
   subContent.innerHTML = `
     <div class="card" style="max-width:560px;">
@@ -572,6 +574,14 @@ function drawSellAgentUI(subContent, agents, products, stockMap, priceMap, activ
           <label>ເລືອກສິນຄ້າ</label>
           ${buildProductPickerHtml(products, stockMap, selectedId, 'sell-agent-pick-btn')}
         </div>
+        ${promo ? `
+          <div class="card" style="background:var(--color-success-bg);margin-bottom:12px;padding:12px 14px;">
+            <div style="font-weight:700;color:var(--color-success);font-size:13px;">🎁 ມີໂປຣໂມຊັ່ນສຳລັບສິນຄ້ານີ້!</div>
+            <div style="font-size:12.5px;color:var(--color-text);margin-top:4px;">
+              ຊື້ ${formatNumber(promo.buy_qty)} ແພັກຂຶ້ນໄປ ${promo.free_qty > 0 ? `ແຖມ ${formatNumber(promo.free_qty)} ແພັກ ` : ''}ໃນລາຄາ ${formatMoney(promo.promo_price)}/ແພັກ
+            </div>
+          </div>
+        ` : ''}
         <div id="sell-price-hint" style="font-size:12.5px;margin-bottom:12px;">
           ${!wholesale
             ? `<span style="color:var(--color-danger);font-weight:600;">⚠️ ສິນຄ້ານີ້ຍັງບໍ່ໄດ້ຕັ້ງລາຄາຂາຍສົ່ງ (ຈະຄິດເປັນ 0 ກີບ) — ໄປຕັ້ງລາຄາກ່ອນທີ່ໜ້າ "ຕັ້ງລາຄາ"</span>`
@@ -589,7 +599,7 @@ function drawSellAgentUI(subContent, agents, products, stockMap, priceMap, activ
   subContent.querySelectorAll('.sell-agent-pick-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       sellAgentPickState.selectedProduct = btn.dataset.id;
-      drawSellAgentUI(subContent, agents, products, stockMap, priceMap, activeAgents, main);
+      drawSellAgentUI(subContent, agents, products, stockMap, priceMap, activeAgents, runningPromos, main);
     });
   });
 
@@ -600,7 +610,8 @@ function drawSellAgentUI(subContent, agents, products, stockMap, priceMap, activ
     const qty = document.getElementById('sell-qty').value;
     try {
       const res = await apiCall('sell_to_agent', { agent_id, product_id, qty });
-      showToast(`ໂອນສະຕັອກສຳເລັດ, ຍອດລວມ ${formatMoney(res.total_amount)}`, 'success');
+      const bonusMsg = res.promo_applied ? ` 🎁 (ແຖມ ${formatNumber(res.promo_free_qty)} ແພັກ)` : '';
+      showToast(`ໂອນສະຕັອກສຳເລັດ, ຍອດລວມ ${formatMoney(res.total_amount)}${bonusMsg}`, 'success');
       renderAdminSellAgent(main);
     } catch (err) { showToast(err.message, 'error'); }
   });
@@ -1141,7 +1152,9 @@ function openDeleteAgentModal(agent, main) {
 
 async function renderAdminPrices(main) {
   try {
-    const prices = await apiCall('get_prices');
+    const [prices, products, promotions] = await Promise.all([
+      apiCall('get_prices'), apiCall('get_products'), apiCall('get_promotions')
+    ]);
     main.innerHTML = `
       <div class="page-header">
         <div>
@@ -1149,7 +1162,7 @@ async function renderAdminPrices(main) {
           <div class="page-subtitle">ລາຄາຂາຍສົ່ງ (ໃຫ້ຕົວແທນ) ແລະ ລາຄາຂາຍປີກ (ໃຫ້ລູກຄ້າ)</div>
         </div>
       </div>
-      <div class="table-wrap">
+      <div class="table-wrap" style="margin-bottom:26px;">
         <table>
           <thead><tr><th>ຮູບ</th><th>ສິນຄ້າ</th><th>ລາຄາສົ່ງ</th><th>ລາຄາປີກ</th><th>ອັບເດດລ່າສຸດ</th><th>ຈັດການ</th></tr></thead>
           <tbody id="prices-tbody">
@@ -1166,6 +1179,68 @@ async function renderAdminPrices(main) {
           </tbody>
         </table>
       </div>
+
+      <div class="page-header">
+        <div>
+          <h1 class="page-title" style="font-size:18px;">🎁 ໂປຣໂມຊັ່ນ</h1>
+          <div class="page-subtitle">ຊື້ຄົບຈຳນວນ ແຖມເພີ່ມ ໃນລາຄາພິເສດ, ຕັ້ງເວລາ ແລະ ເປີດ/ປິດໄດ້ (ໃຊ້ຕອນ "ຂາຍໃຫ້ຕົວແທນ")</div>
+        </div>
+      </div>
+
+      <div class="card" style="max-width:640px;margin-bottom:20px;">
+        <div style="font-weight:700;margin-bottom:12px;">➕ ສ້າງໂປຣໂມຊັ່ນໃໝ່</div>
+        <form id="new-promo-form">
+          <div class="field">
+            <label>ສິນຄ້າ</label>
+            <select id="promo-product" required>
+              ${products.map((p) => `<option value="${p.product_id}">${escapeHtml(p.product_name)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-row" style="margin-top:10px;">
+            <div class="field"><label>ຊື້ຄົບ (ແພັກ)</label><input type="number" id="promo-buy-qty" min="1" placeholder="ເຊັ່ນ 100" required></div>
+            <div class="field"><label>ແຖມ (ແພັກ)</label><input type="number" id="promo-free-qty" min="0" value="0" placeholder="ເຊັ່ນ 10"></div>
+            <div class="field"><label>ລາຄາໂປຣໂມຊັ່ນ (ກີບ/ແພັກ)</label><input type="number" id="promo-price" min="0" placeholder="ເຊັ່ນ 32000" required></div>
+          </div>
+          <div class="form-row" style="margin-top:10px;">
+            <div class="field"><label>ວັນທີເລີ່ມ (ທາງເລືອກ)</label><input type="date" id="promo-start-date"></div>
+            <div class="field"><label>ວັນທີສິ້ນສຸດ (ທາງເລືອກ)</label><input type="date" id="promo-end-date"></div>
+          </div>
+          <button class="btn btn-accent" type="submit" style="margin-top:12px;">ສ້າງໂປຣໂມຊັ່ນ</button>
+        </form>
+      </div>
+
+      <div class="section-title">ລາຍການໂປຣໂມຊັ່ນ (${promotions.length})</div>
+      ${promotions.length === 0
+        ? '<div class="card"><div class="empty-state"><div class="icon">🎁</div>ຍັງບໍ່ມີໂປຣໂມຊັ່ນ</div></div>'
+        : promotions.map((promo) => `
+          <div class="pr-card" style="cursor:default;">
+            <div class="pr-card-row">
+              <div style="display:flex;gap:12px;align-items:center;">
+                ${productThumbHtml(promo.image_url, 44)}
+                <div>
+                  <div style="font-weight:700;font-size:14.5px;">${escapeHtml(promo.product_name)}</div>
+                  <div class="pr-card-items">
+                    ຊື້ ${formatNumber(promo.buy_qty)} ແພັກ ${promo.free_qty > 0 ? `ແຖມ ${formatNumber(promo.free_qty)} ແພັກ` : ''} •
+                    ລາຄາ ${formatMoney(promo.promo_price)}/ແພັກ
+                  </div>
+                  <div class="pr-card-items">
+                    ${promo.start_date ? `ຈາກ ${escapeHtml(promo.start_date)}` : 'ບໍ່ກຳນົດວັນເລີ່ມ'} ${promo.end_date ? `ຫາ ${escapeHtml(promo.end_date)}` : '(ບໍ່ກຳນົດວັນສິ້ນສຸດ)'}
+                  </div>
+                </div>
+              </div>
+              <div style="text-align:right;">
+                ${promoStatusBadgeHtml(promo.status)}
+                <div style="margin-top:8px;display:flex;gap:6px;justify-content:flex-end;">
+                  <button class="btn btn-sm btn-outline toggle-promo-btn" data-id="${promo.promo_id}" data-active="${promo.is_active}">
+                    ${promo.is_active ? 'ປິດ' : 'ເປີດ'}
+                  </button>
+                  <button class="btn btn-sm btn-danger delete-promo-btn" data-id="${promo.promo_id}">🗑️</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        `).join('')
+      }
     `;
 
     main.querySelectorAll('.save-price-btn').forEach((btn) => {
@@ -1180,9 +1255,53 @@ async function renderAdminPrices(main) {
         } catch (err) { showToast(err.message, 'error'); }
       });
     });
+
+    main.querySelector('#new-promo-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const product_id = document.getElementById('promo-product').value;
+      const buy_qty = document.getElementById('promo-buy-qty').value;
+      const free_qty = document.getElementById('promo-free-qty').value;
+      const promo_price = document.getElementById('promo-price').value;
+      const start_date = document.getElementById('promo-start-date').value;
+      const end_date = document.getElementById('promo-end-date').value;
+      try {
+        await apiCall('create_promotion', { product_id, buy_qty, free_qty, promo_price, start_date, end_date });
+        showToast('ສ້າງໂປຣໂມຊັ່ນສຳເລັດ', 'success');
+        renderAdminPrices(main);
+      } catch (err) { showToast(err.message, 'error'); }
+    });
+
+    main.querySelectorAll('.toggle-promo-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const isActive = btn.dataset.active === 'true';
+        try {
+          await apiCall('update_promotion_status', { promo_id: btn.dataset.id, is_active: !isActive });
+          showToast('ອັບເດດສຳເລັດ', 'success');
+          renderAdminPrices(main);
+        } catch (err) { showToast(err.message, 'error'); }
+      });
+    });
+
+    main.querySelectorAll('.delete-promo-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        if (!confirm('ຢືນຢັນລົບໂປຣໂມຊັ່ນນີ້?')) return;
+        try {
+          await apiCall('delete_promotion', { promo_id: btn.dataset.id });
+          showToast('ລົບໂປຣໂມຊັ່ນສຳເລັດ', 'success');
+          renderAdminPrices(main);
+        } catch (err) { showToast(err.message, 'error'); }
+      });
+    });
+
   } catch (err) {
     main.innerHTML = renderErrorCard(err.message);
   }
+}
+
+function promoStatusBadgeHtml(status) {
+  const labels = { running: 'ກຳລັງໃຊ້ງານ', upcoming: 'ຍັງບໍ່ເຖິງ', expired: 'ໝົດອາຍຸ', paused: 'ປິດໄວ້' };
+  const classes = { running: 'badge-success', upcoming: 'badge-warning', expired: 'badge-danger', paused: 'badge-danger' };
+  return `<span class="badge ${classes[status] || 'badge-warning'}">${labels[status] || status}</span>`;
 }
 
 async function renderAdminReports(main) {
